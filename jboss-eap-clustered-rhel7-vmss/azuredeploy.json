@@ -185,115 +185,139 @@
       }
     },
     {
-      "type": "Microsoft.Network/networkSecurityGroups",
-      "apiVersion": "2018-08-01",
-      "name": "[variables('networkSecurityGroupName')]",
+      "type": "Microsoft.Network/loadBalancers",
+      "apiVersion": "2017-10-01",
+      "name": "[variables('loadBalancerName')]",
       "location": "[parameters('location')]",
-      "tags": {},
+      "sku": {
+        "name": "Standard"
+      },
+      "dependsOn": [
+        "[variables('publicIPAddressName')]"
+      ],
       "properties": {
-        "securityRules": [
+        "frontendIPConfigurations": [
           {
-            "name": "HTTP",
+            "name": "LoadBalancerFrontEnd",
             "properties": {
-              "priority": 300,
-              "protocol":"Tcp",
-              "access":"Allow",
-              "direction":"Inbound",
-              "sourceAddressPrefix":"*",
-              "sourcePortRange":"*",
-              "destinationAddressPrefix": "*",
-              "destinationPortRange":"80"
+              "publicIPAddress": {
+                "id": "[variables('publicIPAddressID')]"
+              }
             }
-          },
+          }
+        ],
+        "backendAddressPools": [
           {
-            "name":"HTTPS",
-            "properties":{
-              "priority":320,
-              "protocol":"Tcp",
-              "access":"Allow",
-              "direction":"Inbound",
-              "sourceAddressPrefix":"*",
-              "sourcePortRange":"*",
-              "destinationAddressPrefix": "*",
-              "destinationPortRange":"443"
-            }
-          },
+            "name": "[variables('bePoolName')]"
+          }
+        ],
+        "inboundNatPools": [
           {
-            "name":"SSH",
-            "properties":{
-              "priority":340,
-              "protocol":"Tcp",
-              "access":"Allow",
-              "direction":"Inbound",
-              "sourceAddressPrefix":"*",
-              "sourcePortRange":"*",
-              "destinationAddressPrefix": "*",
-              "destinationPortRange":"22"
-            }
-          },
-          {
-            "name":"RDP",
-            "properties":{
-              "priority":360,
-              "protocol":"Tcp",
-              "access":"Allow",
-              "direction":"Inbound",
-              "sourceAddressPrefix":"*",
-              "sourcePortRange":"*",
-              "destinationAddressPrefix": "*",
-              "destinationPortRange":"3389"
-            }
-          },
-          {
-            "name": "EAPADMIN1",
+            "name": "[variables('natPoolName')]",
             "properties": {
-              "priority":380,
-              "protocol":"Tcp",
-              "access":"Allow",
-              "direction":"Inbound",
-              "sourceAddressPrefix":"*",
-              "sourcePortRange":"*",
-              "destinationAddressPrefix": "*",
-              "destinationPortRange":"9990"
+              "frontendIPConfiguration": {
+                "id": "[variables('frontEndIPConfigID')]"
+              },
+              "protocol": "Tcp",
+              "frontendPortRangeStart": 10022,
+              "frontendPortRangeEnd": 11022,
+              "backendPort": 22
+            }
+          }
+        ],
+        "loadBalancingRules": [
+          {
+            "name": "HTTPRule",
+            "properties": {
+              "loadDistribution": "Default",
+              "frontendIPConfiguration": {
+                "id": "[variables('frontEndIPConfigID')]"
+              },
+              "backendAddressPool": {
+                "id": "[variables('bepoolID')]"
+              },
+              "protocol": "Tcp",
+              "frontendPort": 80,
+              "backendPort": 80,
+              "enableFloatingIP": false,
+              "idleTimeoutInMinutes": 5,
+              "probe": {
+                "id": "[concat(variables('lbId'), '/probes/', variables('httpProbeName'))]"
+              }
             }
           },
           {
-            "name": "EAPADMIN2",
+            "name": "HTTPSRule",
             "properties": {
-              "priority":400,
-              "protocol":"Tcp",
-              "access":"Allow",
-              "direction":"Inbound",
-              "sourceAddressPrefix":"*",
-              "sourcePortRange":"*",
-              "destinationAddressPrefix": "*",
-              "destinationPortRange":"10090"
+              "loadDistribution": "Default",
+              "frontendIPConfiguration": {
+                "id": "[variables('frontEndIPConfigID')]"
+              },
+              "backendAddressPool": {
+                "id": "[variables('bepoolId')]"
+              },
+              "protocol": "Tcp",
+              "frontendPort": 443,
+              "backendPort": 443,
+              "enableFloatingIP": false,
+              "idleTimeoutInMinutes": 5,
+              "probe": {
+                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('lbName')), '/probes/', variables('httpsProbeName'))]"
+              }
             }
           },
           {
-            "name": "EAPAPP1",
+            "name": "EapApp",
             "properties": {
-              "priority":420,
-              "protocol":"Tcp",
-              "access":"Allow",
-              "direction":"Inbound",
-              "sourceAddressPrefix":"*",
-              "sourcePortRange":"*",
-              "destinationAddressPrefix": "*",
-              "destinationPortRange":"8080"
+              "loadDistribution": "Default",
+              "frontendIPConfiguration": {
+                "id": "[variables('frontEndIPConfigID')]"
+              },
+              "backendAddressPool": {
+                "id": "[variables('bepoolID')]"
+              },
+              "protocol": "Tcp",
+              "frontendPort": 8080,
+              "backendPort": 8080,
+              "enableFloatingIP": false,
+              "idleTimeoutInMinutes": 5
             }
           },
           {
-            "name": "EAPAPP2",
+            "name": "EapAdmin",
             "properties": {
-              "priority":440,
-              "protocol":"Tcp",
-              "access":"Allow",
-              "direction":"Inbound",
-              "sourceAddressPrefix":"*",
-              "sourcePortRange":"*",
-              "destinationAddressPrefix": "*",
-              "destinationPortRange":"8180"
+              "loadDistribution": "Default",
+              "frontendIPConfiguration": {
+                "id": "[variables('frontEndIPConfigID')]"
+              },
+              "backendAddressPool": {
+                "id": "[variables('bepoolID')]"
+              },
+              "protocol": "Tcp",
+              "frontendPort": 9990,
+              "backendPort": 9990,
+              "enableFloatingIP": false,
+              "idleTimeoutInMinutes": 5
+            }
+          }
+        ],
+        "probes": [
+          {
+            "name": "[variables('httpProbeName')]",
+            "properties": {
+              "protocol": "Tcp",
+              "port": 80,
+              "intervalInSeconds": 5,
+              "numberOfProbes": 2
+            }
+          },
+          {
+            "name": "[variables('httpsProbeName')]",
+            "properties": {
+              "protocol": "Tcp",
+              "port": 443,
+              "intervalInSeconds": 5,
+              "numberOfProbes": 2
             }
           }
         ]
@@ -356,9 +380,9 @@
                 "id": "[variables('frontEndIPConfigID')]"
               },
               "protocol": "Tcp",
-              "frontendPortRangeStart": "50000",
-              "frontendPortRangeEnd": "50099",
-              "backendPort": "22"
+              "frontendPortRangeStart": 10022,
+              "frontendPortRangeEnd": 11022,
+              "backendPort": 22
             }
           }
         ]
@@ -375,7 +399,7 @@
       "dependsOn": [
         "[variables('loadBalancerName')]",
         "[variables('virtualNetworkName')]",
-        "[concat('Microsoft.Storage/storageAccounts/', variables('sActName'))]",
+        "[concat('Microsoft.Storage/storageAccounts/', variables('sActName'))]"
       ],
       "sku": {
         "name": "[parameters('vmSize')]",
@@ -383,7 +407,7 @@
         "capacity": "[parameters('instanceCount')]"
       },
       "properties": {
-        "overprovision": "true",
+        "overprovision": true,
         "upgradePolicy": {
           "mode": "Manual"
         },
