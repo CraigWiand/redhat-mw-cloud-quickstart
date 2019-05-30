@@ -97,7 +97,7 @@
       "metadata": {
         "description": "Number of VM instances (100 or less)."
       },
-      "defaultValue": "3",
+      "defaultValue": 3,
       "maxValue": 100
     }
   },
@@ -122,6 +122,7 @@
     "subnetRef": "[concat(variables('vnetId'), '/subnets/', variables('subnetName'))]",
     "publicIPAddressID": "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))]",
     "lbID": "[resourceId('Microsoft.Network/loadBalancers', variables('loadBalancerName'))]",
+    "loadBalancerName": "[concat(parameters('vmssName'), 'lb')]",
     "natPoolName": "[concat(parameters('vmssName'), 'natpool')]",
     "bePoolName": "[concat(parameters('vmssName'), 'bepool')]",
     "nicName": "[concat(parameters('vmssName'), 'nic')]",
