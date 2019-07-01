@@ -2,6 +2,14 @@
   "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
   "parameters": {
+    "vmssName": {
+      "type": "string",
+      "metadata": {
+        "description": "String used as a base for naming resources. Must be 3-61 characters in length and globally unique across Azure. A hash is prepended to this string for some resources, and resource-specific information is appended."
+      },
+      "minLength": 3,
+      "maxLength": 61
+    },
     "adminUsername": {
       "type": "string",
       "metadata": {
@@ -105,19 +113,15 @@
     "singlequote": "'",
     "escapedQuote": "\"",
     "baseName": "[uniquestring(parameters('dnsLabelPrefix'),resourceGroup().id)]",
-    "networkInterfaceName": "[concat('myNic8',variables('baseName'))]",
     "addressPrefixes": "10.0.0.0/24",
     "subnetName": "default",
     "publicIPAddressName": "[concat('myIP8',variables('baseName'))]",
     "publicIPAddressType": "Dynamic",
-    "vmssName": "[parameters('dnsLabelPrefix')]",
     "virtualNetworkName": "eap-vnet",
-    "networkSecurityGroupName": "[concat(parameters('dnsLabelPrefix'),'-nsg8')]",
     "storageAccountType": "Standard_LRS",
     "sActName": "[concat('eap',uniquestring(parameters('dnsLabelPrefix'),resourceGroup().id))]",
     "ScriptFolder": "scripts",
     "ScriptFileName": "eap-setup-redhat.sh",
-    "nsgId": "[resourceId(resourceGroup().name, 'Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroupName'))]",
     "vnetId": "[resourceId(resourceGroup().name,'Microsoft.Network/virtualNetworks', variables('virtualNetworkName'))]",
     "subnetRef": "[concat(variables('vnetId'), '/subnets/', variables('subnetName'))]",
     "publicIPAddressID": "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))]",
@@ -125,25 +129,17 @@
     "loadBalancerName": "[concat(parameters('vmssName'), 'lb')]",
     "natPoolName": "[concat(parameters('vmssName'), 'natpool')]",
     "bePoolName": "[concat(parameters('vmssName'), 'bepool')]",
+    "bepoolID": "[concat(variables('lbID'),'/backendAddressPools/', variables('bepoolName'))]",
     "nicName": "[concat(parameters('vmssName'), 'nic')]",
     "ipConfigName": "[concat(parameters('vmssName'), 'ipconfig')]",
     "frontEndIPConfigID": "[concat(variables('lbID'), '/frontendIPConfigurations/loadBalancerFrontEnd')]",
+    "httpProbeName": "httpProbe",
+    "httpsProbeName": "httpsProbe",
     "imageReference": {
       "publisher": "RedHat",
       "offer": "RHEL",
       "sku": "7-RAW",
       "version": "latest"
-    },
-    "linuxConfiguration": {
-      "disablePasswordAuthentication": true,
-      "ssh": {
-        "publicKeys": [
-          {
-            "path": "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]",
-            "keyData": "[parameters('adminPasswordOrKey')]"
-          }
-        ]
-      }
     }
   },
   "resources": [
@@ -190,11 +186,8 @@
       "apiVersion": "2017-10-01",
       "name": "[variables('loadBalancerName')]",
       "location": "[parameters('location')]",
-      "sku": {
-        "name": "Standard"
-      },
       "dependsOn": [
-        "[variables('publicIPAddressName')]"
+        "[variables('publicIPAddressID')]"
       ],
       "properties": {
         "frontendIPConfigurations": [
@@ -209,7 +202,7 @@
         ],
         "backendAddressPools": [
           {
-            "name": "[variables('bePoolName')]"
+            "name": "[variables('bepoolName')]"
           }
         ],
         "inboundNatPools": [
@@ -255,7 +248,7 @@
                 "id": "[variables('frontEndIPConfigID')]"
               },
               "backendAddressPool": {
-                "id": "[variables('bepoolId')]"
+                "id": "[variables('bepoolID')]"
               },
               "protocol": "Tcp",
               "frontendPort": 443,
@@ -263,7 +256,7 @@
               "enableFloatingIP": false,
               "idleTimeoutInMinutes": 5,
               "probe": {
-                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('lbName')), '/probes/', variables('httpsProbeName'))]"
+                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('loadBalancerName')), '/probes/', variables('httpsProbeName'))]"
               }
             }
           },
@@ -347,55 +340,9 @@
       }
     },
     {
-      "type": "Microsoft.Network/loadBalancers",
-      "apiVersion": "2017-10-01",
-      "name": "[variables('loadBalancerName')]",
-      "location": "[parameters('location')]",
-      "sku": {
-        "name": "Standard"
-      },
-      "dependsOn": [
-        "[variables('publicIPAddressName')]"
-      ],
-      "properties": {
-        "frontendIPConfigurations": [
-          {
-            "name": "LoadBalancerFrontEnd",
-            "properties": {
-              "publicIPAddress": {
-                "id": "[variables('publicIPAddressID')]"
-              }
-            }
-          }
-        ],
-        "backendAddressPools": [
-          {
-            "name": "[variables('bePoolName')]"
-          }
-        ],
-        "inboundNatPools": [
-          {
-            "name": "[variables('natPoolName')]",
-            "properties": {
-              "frontendIPConfiguration": {
-                "id": "[variables('frontEndIPConfigID')]"
-              },
-              "protocol": "Tcp",
-              "frontendPortRangeStart": 10022,
-              "frontendPortRangeEnd": 11022,
-              "backendPort": 22
-            }
-          }
-        ]
-      }
-    },
-    {
       "type": "Microsoft.Compute/virtualMachineScaleSets",
       "name": "[parameters('vmssName')]",
       "location": "[parameters('location')]",
-      "zones": [
-        "1"
-      ],
       "apiVersion": "2017-12-01",
       "dependsOn": [
         "[variables('loadBalancerName')]",
@@ -423,17 +370,13 @@
           "osProfile": {
             "computerNamePrefix": "[parameters('vmssName')]",
             "adminUsername": "[parameters('adminUsername')]",
-            "adminPassword": "[parameters('adminPasswordOrKey')]",
-            "linuxConfiguration": "[if(equals(parameters('authenticationType'), 'password'), json('null'), variables('linuxConfiguration'))]"
+            "adminPassword": "[parameters('adminPassword')]"
           },
           "networkProfile": {
             "networkInterfaceConfigurations": [
               {
                 "name": "[variables('nicName')]",
                 "properties": {
-                  "networkSecurityGroup": {
-                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroupName'))]"
-                  },
                   "primary": true,
                   "ipConfigurations": [
                     {
@@ -472,7 +415,7 @@
                     "fileUris": [
                       "[concat(parameters('_artifactsLocation'), '/', variables('ScriptFolder'), '/', variables('ScriptFileName'), parameters('_artifactsLocationSasToken'))]"
                     ],
-                    "commandToExecute": "[concat('sh eap-setup-redhat.sh',' ',parameters('adminUsername'),' ',parameters('eapUserName'),' ',variables('singlequote'),parameters('eapPassword'),variables('singlequote'),' ',parameters('rhsmUserName'),' ',variables('singlequote'),parameters('rhsmPassword'),variables('singlequote'),' ', parameters('rhsmPool'),' ',variables('escapedQuote'),parameters('sshKeyData'),variables('escapedQuote'),' ',reference(variables('publicIPAddressName')).dnsSettings.fqdn,' ',reference(concat('Microsoft.Network/networkInterfaces/', variables('networkInterfaceName'))).ipConfigurations[0].properties.privateIPAddress,' ',variables('sActName'),' ',listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('sActName')), providers('Microsoft.Storage', 'storageAccounts').apiVersions[0]).keys[0].value)]"
+                    "commandToExecute": "[concat('sh eap-setup-redhat.sh',' ',parameters('adminUsername'),' ',parameters('eapUserName'),' ',variables('singlequote'),parameters('eapPassword'),variables('singlequote'),' ',parameters('rhsmUserName'),' ',variables('singlequote'),parameters('rhsmPassword'),variables('singlequote'),' ', parameters('rhsmPool'),' ',variables('escapedQuote'),parameters('sshKeyData'),variables('escapedQuote'),' ',reference(variables('publicIPAddressName')).dnsSettings.fqdn,' ',concat('privateIPAddress'),' ',variables('sActName'),' ',listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('sActName')), providers('Microsoft.Storage', 'storageAccounts').apiVersions[0]).keys[0].value)]"
                   }
                 }
               }
@@ -485,11 +428,11 @@
   "outputs": {
     "sshCommand": {
       "type": "string",
-      "value": "[concat('ssh ', parameters('adminUsername'), '@', reference(variables('publicIPAddressName')).dnsSettings.fqdn)]"
+      "value": "[concat('ssh ', parameters('adminUsername'), '@', reference(variables('publicIPAddressID')).dnsSettings.fqdn)]"
     },
     "AppUI?": {
       "type": "string",
-      "value": "[concat('http://', reference(variables('publicIPAddressName')).dnsSettings.fqdn, ':8080/eap-session-replication/')]"
+      "value": "[concat('http://', reference(variables('publicIPAddressID')).dnsSettings.fqdn, ':8080/eap-session-replication/')]"
    }
   }
 }
